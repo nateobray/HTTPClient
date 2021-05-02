@@ -1,0 +1,22 @@
+{
+    "name": "obray/http-client",
+    "description": "A pure PHP http client.",
+    "type": "library",
+    "require": {
+        "obray/socket-client": "dev-master",
+        "obray/http": "dev-master"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Nate Obray",
+            "email": "nathanobray@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+		"psr-4": {
+			"obray\\": "src"
+		}
+	}
+}
