@@ -49,10 +49,10 @@ class HTTPClientHandler implements \obray\interfaces\SocketClientHandlerInterfac
     {
         print_r("success\n");
         if(empty($this->headers)) $this->headers = new \obray\http\Headers([]);
-        
         $this->headers->addHeader(new \obray\http\Header('Host', $this->host));
         $request = new \obray\http\Request($this->method, $this->uri, 'HTTP/1.1', $this->headers);
-        if(!empty($this->body)) $request->setBody($body);
+        if(!empty($this->body)) $request->setBody(new \obray\http\Body($this->body));
+
         $connection->qWrite($request->encode());
     }
 
@@ -61,10 +61,51 @@ class HTTPClientHandler implements \obray\interfaces\SocketClientHandlerInterfac
         print_r("failed\n");
     }
 
-    public function onData(string $data, \obray\interfaces\SocketConnectionInterface $connection): void
+    public function onData(string $data, int $readLength, \obray\interfaces\SocketConnectionInterface $connection)
     {
-        $this->response = \obray\http\Transport::decode($data);
-        if($this->response->isComplete()) $this->client->stop();
+        // handle body if received
+        if(!empty($this->response) && $this->response->isComplete()){
+            if(empty($data)){ 
+                $this->client->stop();
+                $this->client->disconnect();
+                return false;
+            }
+            $body = \obray\http\Body::decode($data);
+            $this->response->setBody($body);
+            $this->client->stop();
+            $this->client->disconnect();
+            return false;
+        }
+
+        // handle end of headers section
+        if(!empty($this->response) && empty($data)){
+            
+            try {
+                $contentLength = $this->response->getHeaders("Content-Length");
+                $contentLength = intVal($contentLength->getValue()->encode());
+                $this->response->complete();
+                // read the rest of the request specified by Content-Length header
+                $connection->setReadMethod(\obray\SocketConnection::READ_UNTIL_LENGTH);
+                return $contentLength;
+            } catch(\Exception $e){
+                // no content length found, check for chunked encodeing next
+            }
+            
+            print_r("empty line, end of headers\n");
+            exit();
+        }
+
+        // handle headers
+        if(!empty($this->response)){
+            $header = \obray\http\Header::decode($data);
+            $this->response->addHeader($header);   
+            
+        }
+
+        // create new response object
+        if(empty($this->response)) $this->response = \obray\http\Transport::decodeProtocol($data);
+
+        return $readLength;
     }
 
     public function onWriteFailed($data, \obray\interfaces\SocketConnectionInterface $connection): void
@@ -75,6 +116,7 @@ class HTTPClientHandler implements \obray\interfaces\SocketClientHandlerInterfac
     public function onReadFailed(\obray\interfaces\SocketConnectionInterface $connection): void
     {
         print_r("Read from socket failed\n");
+        exit();
     }
 
     public function onDisconnect(\obray\interfaces\SocketConnectionInterface $connection): void
